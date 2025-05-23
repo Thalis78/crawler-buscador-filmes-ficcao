@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { crawler, sitesVisitados } from "./crawler.js";
+import { crawler, sitesVisitados, paginas } from "./crawler.js";
 import { contarReferencias, buscarTermo } from "./search.js";
 import { saveJson } from "./saveJson.js";
 
@@ -9,21 +9,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const PORT = 3000;
 
 app.use("/assets", express.static(path.join(__dirname, "assets")));
+app.use("/pages", express.static(path.join(__dirname, "pages"))); // Servindo arquivos HTML
 app.use(express.json());
-
-let paginaInicial = "pages/blade_runner.html";
-let pastaBase = __dirname;
-
-console.log("Iniciando o crawling...");
-crawler(paginaInicial, pastaBase);
-console.log("\nCrawling concluído. Páginas visitadas:", sitesVisitados.size);
 
 console.log("\nContando referências...");
 let referencias = contarReferencias();
 
 let buscasRealizadas = {};
+
+async function iniciarCrawling() {
+  const baseUrl = `http://localhost:${PORT}/pages/`;
+  const paginaInicialRelativa = "blade_runner.html";
+  const urlInicialCompleta = baseUrl + paginaInicialRelativa;
+
+  console.log("Iniciando o crawling...");
+  // A função crawler agora é async, então usamos await
+  await crawler(urlInicialCompleta, baseUrl);
+  console.log("\nCrawling concluído. Páginas visitadas:", sitesVisitados.size);
+  console.log("\nContando referências...");
+  contarReferencias(); 
+  console.log("\nReferências contadas.");
+}
 
 app.get("/buscar", (req, res) => {
   const termo = req.query.inputBuscador?.trim().toLowerCase();
@@ -67,6 +76,8 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-app.listen(3000, () => {
-  console.log("Servidor rodando na porta 3000");
+// Inicia o servidor e DEPOIS o crawling
+app.listen(PORT, async () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  await iniciarCrawling(); // Chama o crawling após o servidor estar pronto
 });

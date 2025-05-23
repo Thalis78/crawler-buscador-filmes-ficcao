@@ -21,7 +21,7 @@ function exibirResultadosHTML(resultados) {
       pagina: r.Página,
       ocorrencias: `${r.Ocorrências} * 5 = ${r.Ocorrências * 5}`,
       linksRecebidos: `${r.Referências} * 10 = ${r.Referências * 10}`,
-      autoReferencia: `${r.AutoReferência} * -15 = ${r.AutoReferência * -15}`,
+      autoReferencia: r.AutoReferência > 0 ? "-15" : "0", 
       pontos: r.Pontos,
     }));
 

@@ -1,61 +1,50 @@
-import fs from "fs";
-import path from "path";
+import axios from "axios";
 import * as cheerio from "cheerio";
 
 // Armazena as páginas visitadas --> { "conteudoPagina": html, "links": [linksEncontrados], "referencias": 0 }
 export const paginas = {};
-
 // Armazena os sites visitados para evitar loops infinitos, o Set é mais eficiente que um array para isso. Ele não permite duplicatas.
 export const sitesVisitados = new Set();
 
 /**
- * @description Função recursiva que percorre os arquivos HTML, armazena o conteúdo e os links encontrados.
- * @param {string} caminhoArquivo - Caminho do arquivo HTML a ser lido.
- * @param {string} pastaBase - Caminho base onde os arquivos estão localizados.
- * @returns
+ * @description Função que faz o crawling (rastreador) de uma página web, visitando todos os links internos.
+ * @param {string} urlAtual - URL da página atual a ser visitada.
+ * @param {string} urlBase - URL base do site para construir URLs absolutas.
+ * @note A função é assíncrona e utiliza axios para fazer requisições HTTP e cheerio para manipular o HTML,
+ *       onde a função armazena o conteúdo da página, os links encontrados e o número de referências em um objeto.
+ *        A função utiliza recursão para visitar todos os links internos encontrados na página.
  */
-export function crawler(caminhoArquivo, pastaBase) {
-  if (sitesVisitados.has(caminhoArquivo)) return; // Verifica se o arquivo já foi visitado
-  sitesVisitados.add(caminhoArquivo); // Adiciona o arquivo ao Set de sites visitados
+export async function crawler(urlAtual, urlBase) {
+  if (sitesVisitados.has(urlAtual)) return;             // Se a URL já foi visitada, não faz nada
+  sitesVisitados.add(urlAtual);                         // Adiciona a URL ao conjunto de sites visitados
 
-  // Cria o caminho completo do arquivo
-  const caminhoCompleto = path.join(pastaBase, caminhoArquivo);
-  let html; // Variável para armazenar o conteúdo do arquivo HTML
-  try {
-    html = fs.readFileSync(caminhoCompleto, "utf-8"); // Lê o arquivo HTML
-  } catch (error) {
-    console.log(`Erro ao ler ${caminhoArquivo}:`, error.message);
-    return;
-  }
+  console.log(`Visitando: ${urlAtual}`);
 
-  const $ = cheerio.load(html); // Carrega o conteúdo HTML no Cheerio para manipulação
-  console.log(`Visitando: ${caminhoArquivo}`);
-  const linksEncontrados = []; // Array para armazenar os links encontrados na página
+  const respostaHTTP = await axios.get(urlAtual);       // Faz a requisição HTTP para obter o HTML da página
+  let html = respostaHTTP.data;                         // Obtém o HTML da página
 
-  // Para cada link encontrado na página, normaliza o caminho e adiciona ao array de links encontrados
-  $("a").each((i, link) => {
-    const href = $(link).attr("href"); // Obtém o atributo href do link
-    if (href && href.endsWith(".html")) {
-      // Verifica se o link é um arquivo HTML
-      let alvo = href; // Inicializa o alvo com o href do link
-      if (!href.startsWith("pages/")) {
-        // Se o href não começa com 'pages/', adiciona 'pages/' ao início do caminho
-        alvo = `pages/${href}`; // Adiciona 'pages/' ao início do caminho
+  const $ = cheerio.load(html);                         // Carrega o HTML no cheerio para manipulação
+  const linksEncontrados = [];                          // Array para armazenar os links encontrados na página
+
+  $("a").each((i, link) => {                            // Para cada link encontrado na página
+    const href = $(link).attr("href");                  // Obtém o atributo href do link
+
+    if (href && href.endsWith(".html")) {                           // Se o link é válido e termina com .html
+      const urlAbsolutaDoLink = new URL(href, urlBase).toString();  // Converte o link para uma URL absoluta
+
+      if (urlAbsolutaDoLink.startsWith(urlBase)) {      // Verifica se o link é interno                 
+        linksEncontrados.push(urlAbsolutaDoLink);       // Adiciona o link ao array de links encontrados
       }
-      alvo = path.normalize(alvo).replace(/\\/g, "/"); // Normaliza o caminho para usar barras normais (/) em vez de barras invertidas (\) no Windows
-
-      linksEncontrados.push(alvo); // Adiciona o link ao array de links encontrados
     }
   });
 
-  // Armazena o conteúdo da página e os links encontrados no objeto paginas
-  paginas[caminhoArquivo] = {
-    conteudoPagina: html,
-    links: linksEncontrados,
-    referencias: 0,
+  paginas[urlAtual] = {                                 // Armazena as informações da página visitada 
+    conteudoPagina: html,                               // HTML da página
+    links: linksEncontrados,                            // Links encontrados na página
+    referencias: 0,                                     // Contador de referências (inicializado em 0)
   };
 
-  for (const proxLink of linksEncontrados) { // Para cada link encontrado, chama a função crawler recursivamente
-    crawler(proxLink, pastaBase);
+  for (const proxUrlAbsoluta of linksEncontrados) {     // Para cada link encontrado na url atual
+    await crawler(proxUrlAbsoluta, urlBase);            // Chama a função crawler recursivamente para visitar o próximo link
   }
 }
